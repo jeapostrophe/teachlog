@@ -8,23 +8,23 @@
 
 ;; Non-determinism Engine
 (struct nd ())
-(struct bind nd (x mx))
-(struct choice nd (x y))
-(struct fail nd ())
 (struct ans nd (a))
+(struct bind nd (mx f))
+(struct fail nd ())
+(struct choice nd (mx my))
 
 (struct kont:return ())
-(struct kont:bind (mx k))
+(struct kont:bind (f k))
 
-(struct st (p kont))
+(struct st (p k))
 
 (define (sols q)
   (match q
     [(list) empty-stream]
     [(cons (st p k) q)
      (match p
-       [(bind x mx) (sols (list* (st x (kont:bind mx k)) q))]
-       [(choice x y) (sols (list* (st x k) (st y k) q))]
+       [(bind mx f) (sols (list* (st mx (kont:bind f k)) q))]
+       [(choice mx my) (sols (list* (st mx k) (st my k) q))]
        [(fail)
         (match k
           [(kont:return) (sols q)]
@@ -32,7 +32,7 @@
        [(ans a)
         (match k
           [(kont:return) (stream-cons a (sols q))]
-          [(kont:bind mx k) (sols (list* (st (mx a) k) q))])])]))
+          [(kont:bind f k) (sols (list* (st (f a) k) q))])])]))
 (define (run p)
   (sols (list (st p (kont:return)))))
 
@@ -46,7 +46,7 @@
   (match v
     [(list) (list)]
     [(cons a d) (cons (rec a) (rec d))]
-    [(lvar dx x) (env-deref env (hash-ref env v x))]
+    [(lvar dx x) (rec (hash-ref env v x))]
     [_ v]))
 
 ;; Unification

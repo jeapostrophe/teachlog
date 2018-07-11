@@ -3,6 +3,7 @@
                      syntax/id-set
                      syntax/parse
                      racket/match)
+         syntax/parse/define
          racket/match
          racket/stream)
 
@@ -38,7 +39,7 @@
 
 ;; Logic Variables
 (struct lvar (dx x) #:transparent)
-(define-syntax-rule (with-lvars (v ...) e)
+(define-simple-macro (with-lvars (v:id ...) e:expr)
   (let ([v (lvar 'v (gensym 'v))] ...) e))
 
 (define (env-deref env v)
@@ -120,42 +121,32 @@
   (match v
     [(? string?) (displayln v)]
     [(? void?) (void)]
-    [(? list?) (pretty-write v)]))
+    [_ (pretty-write v)]))
 
 ;; Syntax
 (begin-for-syntax
   (define empty-free-id-set (immutable-free-id-set))
   (define-syntax-class (static-info which-info? which)
-    #:attributes (x vars)
-    (pattern r
-             #:declare r (static which-info? which)
-             #:attr x this-syntax
+    #:attributes (vars)
+    (pattern (~var r (static which-info? which))
              #:attr vars empty-free-id-set)
-    (pattern (r t:term ...)
-             #:declare r (static which-info? which)
-             #:attr x this-syntax
+    (pattern ((~var r (static which-info? which)) t:term ...)
              #:attr vars
              (apply free-id-set-union empty-free-id-set (attribute t.vars))))
   (define-syntax-class term
     #:attributes (x vars)
-    (pattern (~or x:number x:string)
+    (pattern (~or x:number x:string
+                  ((~literal unsyntax) x)
+                  (~and x ((~literal quote) _)))
              #:attr vars empty-free-id-set)
-    (pattern ((~literal unsyntax) e)
-             #:attr x #'e
-             #:attr vars empty-free-id-set)
-    (pattern i
-             #:declare i (static-info data-info? "data")
-             #:attr x (attribute i.x)
-             #:attr vars (attribute i.vars))
-    (pattern n:id
-             #:attr x #'n
-             #:attr vars (free-id-set-add empty-free-id-set #'n)))
+    (pattern (~var x (static-info data-info? "data"))
+             #:attr vars (attribute x.vars))
+    (pattern x:id
+             #:attr vars (free-id-set-add empty-free-id-set #'x)))
   (define-syntax-class clause
     #:attributes (x vars)
-    (pattern i
-             #:declare i (static-info relation-info? "relation")
-             #:attr x (attribute i.x)
-             #:attr vars (attribute i.vars))))
+    (pattern (~var x (static-info relation-info? "relation"))
+             #:attr vars (attribute x.vars))))
 
 (begin-for-syntax
   (struct info (name arity)
@@ -174,12 +165,9 @@
   (struct relation-info info ())
   (struct data-info info ()))
 
-(define-syntax-rule (define-info-syntax relation relation-info)
-  (define-syntax (relation stx)
-    (syntax-parse stx
-      [(_ r:id a:nat)
-       (syntax/loc stx
-         (define-syntax r (relation-info 'r 'a)))])))
+(define-simple-macro (define-info-syntax relation:id relation-info:id)
+  (define-simple-macro (relation r:id a:nat)
+    (define-syntax r (relation-info 'r 'a))))
 
 (define-info-syntax relation relation-info)
 (provide relation)
@@ -210,17 +198,16 @@
          (theory-query thy h.x)))]))
 (provide ?)
 
-(define-syntax-rule (next thy) (theory-next thy))
+(define-simple-macro (next thy) (theory-next thy))
 (provide next)
 
-(begin-for-syntax
-  (define-syntax-rule
-    (define-literal-syntax-class the-class (the-literal ...))
+(define-simple-macro
+  (define-literal-syntax-class the-class:id (the-literal:id ...))
+  (begin-for-syntax
     (define-syntax-class the-class (pattern (~literal the-literal)) ...)))
 
-(begin-for-syntax
-  (define-literal-syntax-class teachlog-form (:- ? next))
-  (define-literal-syntax-class teachlog-bind (relation data)))
+(define-literal-syntax-class teachlog-form (:- ? next))
+(define-literal-syntax-class teachlog-bind (relation data))
 
 (define-syntax (teachlog-interact stx)
   (syntax-parse stx
@@ -256,16 +243,16 @@
 (module+ lang
   (provide (rename-out [tl-mbegin #%module-begin]
                        [tl-top #%top-interaction])
-           #%datum
+           #%datum quote
            relation data
            ? :- next)
 
   (define current-theory (box empty-theory))
 
-  (define-syntax-rule (tl-top . e)
+  (define-simple-macro (tl-top . e)
     (teachlog-do current-theory e))
 
-  (define-syntax-rule (tl-mbegin e ...)
+  (define-simple-macro (tl-mbegin e ...)
     (#%module-begin (tl-top . e) ...)))
 
 ;; Examples
@@ -276,7 +263,7 @@
 
   (relation parent 2)
   (relation ancestor 2)
-  
+
   (define ft
     (teachlog
      (:- (parent "maekar" "aegon-5"))

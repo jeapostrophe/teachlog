@@ -58,7 +58,7 @@
 (:- (has-type Γ (fun Var Body) (arr T1 T2))
     (has-type (bind Var T1 Γ) Body T2))
 
-(? (has-type mt (fun "x" (if (var "x") zero true)) T)) ; => no
+(? (has-type mt (fun 'x (if (var 'x) zero true)) T)) ; => no
 
 (? (has-type mt (fun "x" (if (var "x") one zero)) T)) ; => T=(bool -> num)
 

@@ -18,7 +18,6 @@
 
 (struct kont:return ())
 (struct kont:bind (mx k))
-(struct kont:choice (y k))
 
 (struct st (p kont) #:transparent)
 
@@ -27,18 +26,16 @@
     [(list) empty-stream]
     [(cons (and s (st p k)) q)
      (match p
-       [(bind x mx) (sols (cons (st x (kont:bind mx k)) q))]
-       [(choice x y) (sols (cons (st x (kont:choice y k)) q))]
+       [(bind x mx) (sols (list* (st x (kont:bind mx k)) q))]
+       [(choice x y) (sols (list* (st x k) (st y k) q))]
        [(fail)
         (match k
           [(kont:return) (sols q)]
-          [(kont:bind _ k) (sols (cons (st p k) q))]
-          [(kont:choice y k) (sols (cons (st y k) q))])]
+          [(kont:bind _ k) (sols (list* (st p k) q))])]
        [(ans a)
         (match k
           [(kont:return) (stream-cons a (sols q))]
-          [(kont:bind mx k) (sols (cons (st (mx a) k) q))]
-          [(kont:choice y k) (sols (cons (st p k) (cons (st y k) q)))])])]))
+          [(kont:bind mx k) (sols (list* (st (mx a) k) q))])])]))
 (define (run p)
   (sols (list (st p (kont:return)))))
 

@@ -37,7 +37,7 @@
   (sols (list (st p (kont:return)))))
 
 ;; Logic Variables
-(struct lvar (dx x))
+(struct lvar (dx x) #:transparent)
 (define-syntax-rule (with-lvars (v ...) e)
   (let ([v (lvar 'v (gensym 'v))] ...) e))
 
@@ -86,7 +86,7 @@
 (define (searchN all-rules env qs)
   (for/fold ([p (ans env)])
             ([q (in-list qs)])
-    (bind p (λ (new-env) (search* all-rules env all-rules q)))))
+    (bind p (λ (new-env) (search* all-rules new-env all-rules q)))))
 
 (define (search-top all-rules q)
   (run (bind (searchN all-rules (hasheq) (list q))
@@ -127,6 +127,10 @@
   (define empty-free-id-set (immutable-free-id-set))
   (define-syntax-class (static-info which-info? which)
     #:attributes (x vars)
+    (pattern r
+             #:declare r (static which-info? which)
+             #:attr x this-syntax
+             #:attr vars empty-free-id-set)
     (pattern (r t:term ...)
              #:declare r (static which-info? which)
              #:attr x this-syntax
@@ -136,16 +140,16 @@
     #:attributes (x vars)
     (pattern (~or x:number x:string)
              #:attr vars empty-free-id-set)
-    (pattern n:id
-             #:attr x #'n
-             #:attr vars (free-id-set-add empty-free-id-set #'n))
     (pattern ((~literal unsyntax) e)
              #:attr x #'e
              #:attr vars empty-free-id-set)
     (pattern i
              #:declare i (static-info data-info? "data")
              #:attr x (attribute i.x)
-             #:attr vars (attribute i.vars)))
+             #:attr vars (attribute i.vars))
+    (pattern n:id
+             #:attr x #'n
+             #:attr vars (free-id-set-add empty-free-id-set #'n)))
   (define-syntax-class clause
     #:attributes (x vars)
     (pattern i
@@ -165,7 +169,8 @@
          (format "expected ~a arguments, got ~a" arity actual)
          #:with rname name
          (syntax/loc stx
-           (list 'rname t.x ...))])))
+           (list 'rname t.x ...))]
+        [r:id (syntax/loc stx (r))])))
   (struct relation-info info ())
   (struct data-info info ()))
 
@@ -263,3 +268,33 @@
 
   (define-syntax-rule (tl-mbegin e ...)
     (#%module-begin (tl-top . e) ...)))
+
+;; Examples
+
+;;;; Using without #lang
+(module* interop racket/base
+  (require (submod ".."))
+
+  (relation parent 2)
+  (relation ancestor 2)
+  
+  (define ft
+    (teachlog
+     (:- (parent "maekar" "aegon-5"))
+     (:- (parent "aegon-5" "aerys-2"))
+     (:- (parent "aerys-2" "viserys"))
+     (:- (parent "aerys-2" "daenerys"))
+     (:- (parent "daenerys" #,(string-append "dro" "gon")))
+     (:- (ancestor X Y)
+         (parent X Y))
+     (:- (ancestor X Z)
+         (parent X Y)
+         (ancestor Y Z))))
+
+  (module+ test
+    (teachlog #:theory ft
+              (? (ancestor X "drogon"))
+              (next) (next) (next) (next))))
+
+(module+ test
+  (require (submod ".." interop test)))

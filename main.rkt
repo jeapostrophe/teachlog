@@ -83,16 +83,13 @@
      (choice (search* all-rules env rules q)
              (search1 all-rules env ruleN q))]))
 
-(define (search all-rules env q)
-  (search* all-rules env all-rules q))
-
 (define (searchN all-rules env qs)
   (for/fold ([p (ans env)])
             ([q (in-list qs)])
-    (bind p (λ (new-env) (search all-rules new-env q)))))
+    (bind p (λ (new-env) (search* all-rules env all-rules q)))))
 
 (define (search-top all-rules q)
-  (run (bind (search all-rules (hasheq) q)
+  (run (bind (searchN all-rules (hasheq) (list q))
              (λ (env)
                (ans (env-deref env q))))))
 

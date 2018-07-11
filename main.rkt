@@ -2,7 +2,6 @@
 (require (for-syntax racket/base
                      syntax/id-set
                      syntax/parse
-                     racket/syntax
                      racket/match)
          racket/match
          racket/list
@@ -94,9 +93,9 @@
     (bind p (λ (new-env) (search all-rules new-env q)))))
 
 (define (search-top all-rules q)
-  (bind (search all-rules (hasheq) q)
-        (λ (env)
-          (ans (env-deref env q)))))
+  (run (bind (search all-rules (hasheq) q)
+             (λ (env)
+               (ans (env-deref env q))))))
 
 ;; Runtime
 (struct theory (rules sols))
@@ -110,7 +109,7 @@
 (define (theory-query thy query)
   (match-define (theory rules _) thy)
   (theory-next
-   (theory rules (run (search-top rules query)))))
+   (theory rules (search-top rules query))))
 (define (theory-next thy)
   (match-define (theory rules sols) thy)
   (match sols
@@ -188,28 +187,26 @@
 (provide data)
 
 (define-syntax (:- stx)
-  (with-disappeared-uses
-    (syntax-parse stx
-      [(_ thy h:clause b:clause ...)
-       #:with (v ...)
-       (free-id-set->list
-        (apply free-id-set-union (attribute h.vars)
-               (attribute b.vars)))
-       (syntax/loc stx
-         (theory-add thy
-                     (λ ()
-                       (with-lvars (v ...)
-                         (list h.x b.x ...)))))])))
+  (syntax-parse stx
+    [(_ thy h:clause b:clause ...)
+     #:with (v ...)
+     (free-id-set->list
+      (apply free-id-set-union (attribute h.vars)
+             (attribute b.vars)))
+     (syntax/loc stx
+       (theory-add thy
+                   (λ ()
+                     (with-lvars (v ...)
+                       (list h.x b.x ...)))))]))
 (provide :-)
 
 (define-syntax (? stx)
-  (with-disappeared-uses
-    (syntax-parse stx
-      [(_ thy h:clause)
-       #:with (v ...) (free-id-set->list (attribute h.vars))
-       (syntax/loc stx
-         (with-lvars (v ...)
-           (theory-query thy h.x)))])))
+  (syntax-parse stx
+    [(_ thy h:clause)
+     #:with (v ...) (free-id-set->list (attribute h.vars))
+     (syntax/loc stx
+       (with-lvars (v ...)
+         (theory-query thy h.x)))]))
 (provide ?)
 
 (define-syntax-rule (next thy) (theory-next thy))
@@ -218,21 +215,15 @@
 (begin-for-syntax
   (define-syntax-rule
     (define-literal-syntax-class the-class (the-literal ...))
-    (define-syntax-class the-class
-      #:literals (the-literal ...)
-      (pattern the-literal)
-      ...)))
+    (define-syntax-class the-class (pattern (~literal the-literal)) ...)))
 
 (begin-for-syntax
-  (define-literal-syntax-class teachlog-form
-    (:- ? next))
-  (define-literal-syntax-class teachlog-bind
-    (relation data)))
+  (define-literal-syntax-class teachlog-form (:- ? next))
+  (define-literal-syntax-class teachlog-bind (relation data)))
 
 (define-syntax (teachlog-interact stx)
   (syntax-parse stx
-    [(_ thy (~and e (b:teachlog-bind . _)))
-     (syntax/loc stx e)]
+    [(_ thy (~and e (b:teachlog-bind . _))) #'e]
     [(_ thy (f:teachlog-form . fargs:expr))
      (syntax/loc stx
        (let-values ([(result next-thy) (f thy . fargs)])
@@ -242,8 +233,7 @@
 
 (define-syntax (teachlog-do stx)
   (syntax-parse stx
-    [(_ thy:id (~and e (b:teachlog-bind . _)))
-     (syntax/loc stx e)]
+    [(_ thy:id (~and e (b:teachlog-bind . _))) #'e]
     [(_ thy:id (~and e (f:teachlog-form . _)))
      (syntax/loc stx
        (set-box! thy (teachlog-interact (unbox thy) e)))]))
@@ -272,15 +262,8 @@
 
   (define current-theory (box empty-theory))
 
-  (define-syntax (tl-top stx)
-    (syntax-parse stx
-      [(_ . e)
-       (syntax/loc stx
-         (teachlog-do current-theory e))]))
+  (define-syntax-rule (tl-top . e)
+    (teachlog-do current-theory e))
 
-  (define-syntax (tl-mbegin stx)
-    (syntax-parse stx
-      [(_ e ...)
-       (syntax/loc stx
-         (#%module-begin
-          (tl-top . e) ...))])))
+  (define-syntax-rule (tl-mbegin e ...)
+    (#%module-begin (tl-top . e) ...)))

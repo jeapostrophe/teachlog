@@ -296,4 +296,26 @@
 ;; Language
 
 (module reader syntax/module-reader
-  teachlog/lang)
+  #:language '(submod teachlog lang))
+
+(module+ lang
+  (provide (rename-out [tl-mbegin #%module-begin]
+                       [tl-top #%top-interaction])
+           #%datum
+           relation data
+           ? :- next)
+
+  (define current-theory (box empty-theory))
+
+  (define-syntax (tl-top stx)
+    (syntax-parse stx
+      [(_ . e)
+       (syntax/loc stx
+         (teachlog-do current-theory e))]))
+
+  (define-syntax (tl-mbegin stx)
+    (syntax-parse stx
+      [(_ e ...)
+       (syntax/loc stx
+         (#%module-begin
+          (tl-top . e) ...))])))

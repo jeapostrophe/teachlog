@@ -157,8 +157,8 @@
   (struct data-info info ()))
 
 (define-simple-macro (define-info-syntax relation:id relation-info:id)
-  (define-simple-macro (relation r:id a:nat)
-    (define-syntax r (relation-info 'r 'a))))
+  (define-simple-macro (relation r:id (~optional a:nat))
+    (define-syntax r (relation-info 'r ((... ~?) 'a 0)))))
 
 ;; Syntax Interface
 (define-info-syntax relation relation-info)

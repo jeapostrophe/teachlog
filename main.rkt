@@ -1,23 +1,154 @@
 #lang racket/base
 (require (for-syntax racket/base
                      syntax/parse)
-         racket/match)
+         racket/match
+         racket/list
+         racket/set
+         racket/stream)
+
+;; Non-determinism Engine
+(struct nd ())
+(struct bind nd (x mx))
+(struct choice nd (x y))
+(struct fail nd ())
+(struct ans nd (a))
+
+(struct kont:return ())
+(struct kont:bind (mx k))
+(struct kont:choice (y k))
+
+(struct st (p kont) #:transparent)
+
+(define (sols q)  
+  (match q
+    [(list) empty-stream]
+    [(cons (and s (st p k)) q)
+     (match p
+       [(bind x mx) (sols (cons (st x (kont:bind mx k)) q))]
+       [(choice x y) (sols (cons (st x (kont:choice y k)) q))]
+       [(fail)
+        (match k
+          [(kont:return) (sols q)]
+          [(kont:bind _ k) (sols (cons (st p k) q))]
+          [(kont:choice y k) (sols (cons (st y k) q))])]
+       [(ans a)
+        (match k
+          [(kont:return) (stream-cons a (sols q))]
+          [(kont:bind mx k) (sols (cons (st (mx a) k) q))]
+          [(kont:choice y k) (sols (cons (st p k) (cons (st y k) q)))])])]))
+(define (run p)
+  (sols (list (st p (kont:return)))))
+
+;; Logic Variables
+(struct lvar (dx x))
+(define (extract-vars x)
+  (match x
+    [(cons a d) (set-union (extract-vars a) (extract-vars d))]
+    [(lvar _ _) (seteq x)]
+    [_ (seteq)]))
+(define (rename-vars ρ x)
+  (define (rec x) (rename-vars ρ x))
+  (match x
+    [(cons a d) (cons (rec a) (rec d))]
+    [(lvar _ _) (hash-ref ρ x)]
+    [_ x]))
+(define (freshen r)
+  (rename-vars
+   (for/hasheq ([v (in-set (extract-vars r))])
+     (match-define (lvar dx _) v)
+     (values v (lvar dx (gensym))))
+   r))
+(define (bound? env v)
+  (and (lvar? v) (hash-has-key? env v)))
+(define (unbound? env v)
+  (and (lvar? v) (not (hash-has-key? env v))))
+
+(define (env-deref env v)
+  (define (rec v) (env-deref env v))
+  (match v
+    [(list) (list)]
+    [(cons a d) (cons (rec a) (rec d))]
+    [(lvar dx x)
+     (define xv (hash-ref env v #f))
+     (if xv
+       (env-deref env xv)
+       x)]
+    [_ v]))
+
+;; Unification
+(define (unify env lhs rhs)
+  (cond
+    [(equal? lhs rhs)
+     (ans env)]
+    [(unbound? env lhs)
+     (ans (hash-set env lhs rhs))]
+    [(unbound? env rhs)
+     (ans (hash-set env rhs lhs))]
+    [(bound? env lhs)
+     (unify env (hash-ref env lhs) rhs)]
+    [(bound? env rhs)
+     (unify env lhs (hash-ref env rhs))]
+    [(and (pair? lhs) (pair? rhs))
+     (bind (unify env (car lhs) (car rhs))
+           (λ (new-env)
+             (unify new-env (cdr lhs) (cdr rhs))))]
+    [else
+     (fail)]))
+
+;; Logic Engine
+(define (search1 all-rules env rule1 q)
+  (match-define (cons head body) (freshen rule1))
+  (bind (unify env head q)
+        (λ (new-env)
+          (searchN all-rules new-env body))))
+
+(define (search* all-rules env rules q)
+  (match rules
+    [(list) (fail)]
+    [(cons rule1 rules)
+     (choice (search1 all-rules env rule1 q)
+             (search* all-rules env rules q))]))
+
+(define (search all-rules env q)
+  (search* all-rules env all-rules q))
+
+(define (searchN all-rules env qs)
+  (for/fold ([p (ans env)])
+            ([q (in-list qs)])
+    (bind p (λ (new-env) (search all-rules new-env q)))))
+
+(define (search-top all-rules q)
+  (bind (search all-rules (hasheq) q)
+        (λ (env)
+          (ans (env-deref env q)))))
 
 ;; Runtime
-(struct theory ())
+(struct theory (rules sols))
 (define empty-theory
-  (theory))
+  (theory empty #f))
 (define (theory-add thy head body)
-  (error 'theory-add "XXX"))
+  (match-define (theory rules sols) thy)
+  (values (when sols
+            "Theory changed: Dropping pending solutions")
+          (theory (cons (cons head body) rules)
+                  #f)))
 (define (theory-query thy query)
-  (error 'theory-query "XXX"))
+  (match-define (theory rules sols) thy)
+  (theory-next (theory rules (run (search-top rules query)))))
 (define (theory-next thy)
-  (error 'theory-next "XXX"))
+  (match-define (theory rules sols) thy)
+  (match sols
+    [#f (values "No active query" thy)]
+    [(? stream-empty?) (values "No solutions" thy)]
+    [s (values (stream-first s) (theory rules (stream-rest s)))]))
 
 ;; UI
 (define (teachlog-print v)
+  (local-require racket/pretty)
   (match v
-    [(? void?) (void)]))
+    [(? string?) (displayln v)]
+    [(? void?) (void)]
+    [(? list?) (pretty-display v)]))
 
 ;; Syntax
 (define-syntax (theory-ref stx)
@@ -67,7 +198,7 @@
     #:attributes (x)
     (pattern x:number)
     (pattern x:string)
-    (pattern n:id #:attr x #''n)
+    (pattern n:id #:attr x #'(lvar 'n 'n))
     (pattern i
              #:declare i (static-info data-info? "data")
              #:attr x (attribute i.x)))

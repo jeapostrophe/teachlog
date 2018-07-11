@@ -197,21 +197,20 @@
     [(? void?) (void)]
     [_ (pretty-write v)]))
 
-(define-simple-macro (teachlog-interact thy (f:teachlog-form . fargs:expr))
-  (let-values ([(result next-thy) (f thy . fargs)])
+(define (teachlog-do!* thy-box tl-stmt)
+  (let-values ([(result next-thy) (tl-stmt)])
     (teachlog-print result)
-    next-thy))
-
-(define-syntax-parser teachlog-do
+    (set-box! thy-box next-thy)))
+(define-syntax-parser teachlog-do!
   [(_ thy:id (~and e (b:teachlog-bind . _)))
    #'e]
-  [(_ thy:id (~and e (f:teachlog-form . _)))
-   #'(set-box! thy (teachlog-interact (unbox thy) e))])
+  [(_ thy:id (~and e (f:teachlog-form . fargs:expr)))
+   #'(teachlog-do!* thy (λ () (f (unbox thy) . fargs)))])
 
 ;; Main interface
 (define-simple-macro (teachlog (~optional (~seq #:theory thy:expr)) e ...)
   (let ([the-thy (box (~? thy empty-theory))])
-    (teachlog-do the-thy e) ...
+    (teachlog-do! the-thy e) ...
     (unbox the-thy)))
 (provide teachlog)
 
@@ -229,7 +228,7 @@
   (define current-theory (box empty-theory))
 
   (define-simple-macro (tl-top . e)
-    (teachlog-do current-theory e))
+    (teachlog-do! current-theory e))
 
   (define-simple-macro (tl-mbegin e ...)
     (#%module-begin (tl-top . e) ...)))

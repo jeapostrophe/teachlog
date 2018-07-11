@@ -96,8 +96,7 @@
 
 ;; Runtime
 (struct theory (rules sols))
-(define empty-theory
-  (theory '() #f))
+(define empty-theory (theory '() #f))
 (define (theory-add thy new-rule)
   (match-define (theory rules sols) thy)
   (values (when sols
@@ -115,24 +114,18 @@
     [s (values (stream-first s) (theory rules (stream-rest s)))]))
 (provide empty-theory)
 
-;; UI
-(define (teachlog-print v)
-  (local-require racket/pretty)
-  (match v
-    [(? string?) (displayln v)]
-    [(? void?) (void)]
-    [_ (pretty-write v)]))
-
-;; Syntax
+;; Syntax helpers
 (begin-for-syntax
   (define empty-free-id-set (immutable-free-id-set))
+  (define (free-id-set-union* l)
+    (apply free-id-set-union empty-free-id-set l))
   (define-syntax-class (static-info which-info? which)
     #:attributes (vars)
-    (pattern (~var r (static which-info? which))
+    #:local-conventions ([w (static which-info? which)])
+    (pattern w
              #:attr vars empty-free-id-set)
-    (pattern ((~var r (static which-info? which)) t:term ...)
-             #:attr vars
-             (apply free-id-set-union empty-free-id-set (attribute t.vars))))
+    (pattern (w t:term ...)
+             #:attr vars (free-id-set-union* (attribute t.vars))))
   (define-syntax-class term
     #:attributes (x vars)
     (pattern (~or x:number x:string
@@ -144,7 +137,7 @@
     (pattern x:id
              #:attr vars (free-id-set-add empty-free-id-set #'x)))
   (define-syntax-class clause
-    #:attributes (x vars)
+    #:attributes (vars)
     (pattern (~var x (static-info relation-info? "relation"))
              #:attr vars (attribute x.vars))))
 
@@ -158,9 +151,7 @@
          #:do [(define actual (length (syntax->list #'(t ...))))]
          #:fail-unless (= actual arity)
          (format "expected ~a arguments, got ~a" arity actual)
-         #:with rname name
-         (syntax/loc stx
-           (list 'rname t.x ...))]
+         #`(list '#,name t.x ...)]
         [r:id (syntax/loc stx (r))])))
   (struct relation-info info ())
   (struct data-info info ()))
@@ -169,38 +160,28 @@
   (define-simple-macro (relation r:id a:nat)
     (define-syntax r (relation-info 'r 'a))))
 
+;; Syntax Interface
 (define-info-syntax relation relation-info)
-(provide relation)
-
 (define-info-syntax data data-info)
-(provide data)
 
-(define-syntax (:- stx)
-  (syntax-parse stx
-    [(_ thy h:clause b:clause ...)
-     #:with (v ...)
-     (free-id-set->list
-      (apply free-id-set-union (attribute h.vars)
-             (attribute b.vars)))
-     (syntax/loc stx
-       (theory-add thy
-                   (λ ()
-                     (with-lvars (v ...)
-                       (list h.x b.x ...)))))]))
-(provide :-)
+(define-simple-macro (:- thy h:clause b:clause ...)
+  #:with (v ...) (free-id-set->list
+                  (free-id-set-union* (cons (attribute h.vars)
+                                            (attribute b.vars))))
+  (theory-add thy
+              (λ ()
+                (with-lvars (v ...)
+                  (list h b ...)))))
 
-(define-syntax (? stx)
-  (syntax-parse stx
-    [(_ thy h:clause)
-     #:with (v ...) (free-id-set->list (attribute h.vars))
-     (syntax/loc stx
-       (with-lvars (v ...)
-         (theory-query thy h.x)))]))
-(provide ?)
+(define-simple-macro (? thy h:clause)
+  #:with (v ...) (free-id-set->list (attribute h.vars))
+  (with-lvars (v ...)
+    (theory-query thy h)))
 
 (define-simple-macro (next thy) (theory-next thy))
-(provide next)
+(provide relation data :- ? next)
 
+;; Language and interface helpers
 (define-simple-macro
   (define-literal-syntax-class the-class:id (the-literal:id ...))
   (begin-for-syntax
@@ -209,34 +190,32 @@
 (define-literal-syntax-class teachlog-form (:- ? next))
 (define-literal-syntax-class teachlog-bind (relation data))
 
-(define-syntax (teachlog-interact stx)
-  (syntax-parse stx
-    [(_ thy (f:teachlog-form . fargs:expr))
-     (syntax/loc stx
-       (let-values ([(result next-thy) (f thy . fargs)])
-         (teachlog-print result)
-         next-thy))]))
-(provide teachlog-interact)
+(define (teachlog-print v)
+  (local-require racket/pretty)
+  (match v
+    [(? string?) (displayln v)]
+    [(? void?) (void)]
+    [_ (pretty-write v)]))
 
-(define-syntax (teachlog-do stx)
-  (syntax-parse stx
-    [(_ thy:id (~and e (b:teachlog-bind . _))) #'e]
-    [(_ thy:id (~and e (f:teachlog-form . _)))
-     (syntax/loc stx
-       (set-box! thy (teachlog-interact (unbox thy) e)))]))
-(provide teachlog-do)
+(define-simple-macro (teachlog-interact thy (f:teachlog-form . fargs:expr))
+  (let-values ([(result next-thy) (f thy . fargs)])
+    (teachlog-print result)
+    next-thy))
 
-(define-syntax (teachlog stx)
-  (syntax-parse stx
-    [(_ (~optional (~seq #:theory thy:expr)) e ...)
-     (syntax/loc stx
-       (let ([the-thy (box (~? thy empty-theory))])
-         (teachlog-do the-thy e) ...
-         (unbox the-thy)))]))
+(define-syntax-parser teachlog-do
+  [(_ thy:id (~and e (b:teachlog-bind . _)))
+   #'e]
+  [(_ thy:id (~and e (f:teachlog-form . _)))
+   #'(set-box! thy (teachlog-interact (unbox thy) e))])
+
+;; Main interface
+(define-simple-macro (teachlog (~optional (~seq #:theory thy:expr)) e ...)
+  (let ([the-thy (box (~? thy empty-theory))])
+    (teachlog-do the-thy e) ...
+    (unbox the-thy)))
 (provide teachlog)
 
 ;; Language
-
 (module reader syntax/module-reader
   #:language '(submod teachlog lang))
 
@@ -256,6 +235,9 @@
     (#%module-begin (tl-top . e) ...)))
 
 ;; Examples
+
+(module+ test
+  (require (submod ".." interop test)))
 
 ;;;; Using without #lang
 (module* interop racket/base
@@ -281,6 +263,3 @@
     (teachlog #:theory ft
               (? (ancestor X "drogon"))
               (next) (next) (next) (next))))
-
-(module+ test
-  (require (submod ".." interop test)))

@@ -100,7 +100,7 @@
 (define (theory-add thy new-rule)
   (match-define (theory rules sols) thy)
   (values (when sols
-            "Theory changed: Dropping pending solutions")
+            "Theory changed; Dropping pending solutions")
           (theory (cons new-rule rules) #f)))
 (define (theory-query thy query)
   (match-define (theory rules _) thy)

@@ -17,7 +17,7 @@
 (struct kont:return ())
 (struct kont:bind (mx k))
 
-(struct st (p kont) #:transparent)
+(struct st (p kont))
 
 (define (sols q)
   (match q
@@ -38,7 +38,7 @@
   (sols (list (st p (kont:return)))))
 
 ;; Logic Variables
-(struct lvar (dx x) #:transparent)
+(struct lvar (dx x))
 (define-syntax-rule (with-lvars (v ...) e)
   (let ([v (lvar 'v (gensym 'v))] ...) e))
 

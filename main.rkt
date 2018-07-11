@@ -262,23 +262,6 @@
     (:- ? next))
   (define-literal-syntax-class teachlog-bind
     (relation data)))
-(define-syntax (teachlog-do stx)
-  (with-disappeared-uses
-    (syntax-parse stx
-      [(_ thy:id (~and e (b:teachlog-bind . _)))
-       (syntax/loc stx e)]
-      [(_ thy:id (~and e (f:teachlog-form . _)))
-       (syntax/loc stx
-         (set! thy (teachlog-interact thy e)))])))
-
-(define-syntax (teachlog stx)
-  (syntax-parse stx
-    [(_ (~optional (~seq #:theory thy:expr)) e ...)
-     (syntax/loc stx
-       (let ([the-thy (~? thy empty-theory)])
-         (teachlog-do the-thy e) ...
-         the-thy))]))
-(provide teachlog)
 
 (define-syntax (teachlog-interact stx)
   (syntax-parse stx
@@ -290,6 +273,25 @@
          (teachlog-print result)
          next-thy))]))
 (provide teachlog-interact)
+
+(define-syntax (teachlog-do stx)
+  (with-disappeared-uses
+    (syntax-parse stx
+      [(_ thy:id (~and e (b:teachlog-bind . _)))
+       (syntax/loc stx e)]
+      [(_ thy:id (~and e (f:teachlog-form . _)))
+       (syntax/loc stx
+         (set-box! thy (teachlog-interact (unbox thy) e)))])))
+(provide teachlog-do)
+
+(define-syntax (teachlog stx)
+  (syntax-parse stx
+    [(_ (~optional (~seq #:theory thy:expr)) e ...)
+     (syntax/loc stx
+       (let ([the-thy (box (~? thy empty-theory))])
+         (teachlog-do the-thy e) ...
+         (unbox the-thy)))]))
+(provide teachlog)
 
 ;; Language
 

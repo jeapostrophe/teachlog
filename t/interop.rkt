@@ -10,6 +10,8 @@
    (:- (parent "aerys-2" "daenerys"))
    (:- (parent "daenerys" #,(string-append "dro" "gon")))))
 
+(parent "ed" "sansa")
+
 (module+ main
   (teachlog #:theory ft
             (? (parent "daenerys" Y))

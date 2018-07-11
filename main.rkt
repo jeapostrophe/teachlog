@@ -155,13 +155,10 @@
 
 ;; Syntax
 (begin-for-syntax
-  (define (illegal-use what stx)
-    (raise-syntax-error what "Illegal outside of :- or ?" stx)))
-
-(begin-for-syntax
   (struct info (name arity)
     #:property prop:procedure
-    (λ (i stx) (illegal-use (info-name i) stx)))
+    (λ (i stx)
+      (raise-syntax-error (info-name i) "Illegal outside of :- or ?" stx)))
   (struct relation-info info ())
   (struct data-info info ()))
 
@@ -243,10 +240,7 @@
            (theory-query thy (list v ...) h.x)))])))
 (provide ?)
 
-(define-syntax (next stx)
-  (syntax-parse stx
-    [(_ thy ~!)
-     (syntax/loc stx (theory-next thy))]))
+(define next theory-next)
 (provide next)
 
 (begin-for-syntax

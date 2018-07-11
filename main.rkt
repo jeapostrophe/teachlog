@@ -4,7 +4,6 @@
                      syntax/parse
                      racket/match)
          racket/match
-         racket/list
          racket/stream)
 
 ;; Non-determinism Engine
@@ -100,7 +99,7 @@
 ;; Runtime
 (struct theory (rules sols))
 (define empty-theory
-  (theory empty #f))
+  (theory '() #f))
 (define (theory-add thy new-rule)
   (match-define (theory rules sols) thy)
   (values (when sols

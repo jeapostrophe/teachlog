@@ -2,25 +2,32 @@
 (require (for-syntax racket/base
                      syntax/parse)
          teachlog)
-(provide (rename-out [tl-module-begin #%module-begin]
-                     [tl-top #%top-interaction])
+(provide #%module-begin
          #%datum
+         #%top-interaction
          (except-out (all-from-out teachlog)
-                     teachlog teachlog-interact))
+                     teachlog teachlog-interact
+                     :- ? next)
+         (rename-out [tl-:- :-]
+                     [tl-? ?]
+                     [tl-next next]))
 
-(define current-theory (box #f))
+(define current-theory (box empty-theory))
 
-(define-syntax (tl-module-begin stx)
-  (syntax-parse stx
-    [(_ e ...)
-     (syntax/loc stx
-       (#%module-begin
-        (set-box! current-theory (teachlog e ...))))]))
+(define-syntax-rule (define-tl-form tl-:- :-)
+  (define-syntax (tl-:- stx)
+    (syntax-parse stx
+      [(_ . args)
+       (quasisyntax/loc stx
+         (tl-top #,(syntax/loc stx (:- . args))))])))
+
+(define-tl-form tl-:- :-)
+(define-tl-form tl-? ?)
+(define-tl-form tl-next next)
 
 (define-syntax (tl-top stx)
   (syntax-parse stx
-    [(_ . e)
+    [(_ e)
      (syntax/loc stx
        (set-box! current-theory
-                 (teachlog-interact (unbox current-theory)
-                                    e)))]))
+                 (teachlog-interact (unbox current-theory) e)))]))

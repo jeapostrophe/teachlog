@@ -1,6 +1,9 @@
 #lang racket/base
 (require (for-syntax racket/base
-                     syntax/parse)
+                     racket/list
+                     syntax/id-set
+                     syntax/parse
+                     racket/syntax)
          racket/match
          racket/list
          racket/set
@@ -19,7 +22,7 @@
 
 (struct st (p kont) #:transparent)
 
-(define (sols q)  
+(define (sols q)
   (match q
     [(list) empty-stream]
     [(cons (and s (st p k)) q)
@@ -40,24 +43,9 @@
   (sols (list (st p (kont:return)))))
 
 ;; Logic Variables
-(struct lvar (dx x))
-(define (extract-vars x)
-  (match x
-    [(cons a d) (set-union (extract-vars a) (extract-vars d))]
-    [(lvar _ _) (seteq x)]
-    [_ (seteq)]))
-(define (rename-vars ρ x)
-  (define (rec x) (rename-vars ρ x))
-  (match x
-    [(cons a d) (cons (rec a) (rec d))]
-    [(lvar _ _) (hash-ref ρ x)]
-    [_ x]))
-(define (freshen r)
-  (rename-vars
-   (for/hasheq ([v (in-set (extract-vars r))])
-     (match-define (lvar dx _) v)
-     (values v (lvar dx (gensym))))
-   r))
+(struct lvar (dx x) #:transparent)
+(define-syntax-rule (with-lvars (v ...) e)
+  (let ([v (lvar 'v (gensym 'v))] ...) e))
 (define (bound? env v)
   (and (lvar? v) (hash-has-key? env v)))
 (define (unbound? env v)
@@ -74,6 +62,10 @@
        (env-deref env xv)
        x)]
     [_ v]))
+(define (render-query vs q)
+  (env-deref (for/hasheq ([v (in-set vs)])
+               (values v (lvar-dx v)))
+             q))
 
 ;; Unification
 (define (unify env lhs rhs)
@@ -97,7 +89,7 @@
 
 ;; Logic Engine
 (define (search1 all-rules env rule1 q)
-  (match-define (cons head body) (freshen rule1))
+  (match-define (cons head body) (rule1))
   (bind (unify env head q)
         (λ (new-env)
           (searchN all-rules new-env body))))
@@ -117,30 +109,41 @@
             ([q (in-list qs)])
     (bind p (λ (new-env) (search all-rules new-env q)))))
 
-(define (search-top all-rules q)
+(define (search-top all-rules vs q)
   (bind (search all-rules (hasheq) q)
         (λ (env)
-          (ans (env-deref env q)))))
+          (ans
+           (for/list ([v (in-set vs)])
+             (list (lvar-dx v) '= (env-deref env v)))))))
 
 ;; Runtime
-(struct theory (rules sols))
+(define (snoc l x) (append l (list x)))
+(struct theory (rules q sols))
 (define empty-theory
-  (theory empty #f))
-(define (theory-add thy head body)
-  (match-define (theory rules sols) thy)
+  (theory empty #f #f))
+(define (theory-add thy new-rule)
+  (match-define (theory rules _ sols) thy)
   (values (when sols
             "Theory changed: Dropping pending solutions")
-          (theory (cons (cons head body) rules)
-                  #f)))
-(define (theory-query thy query)
-  (match-define (theory rules sols) thy)
-  (theory-next (theory rules (run (search-top rules query)))))
+          (theory (snoc rules new-rule)
+                  #f #f)))
+(define (theory-query thy vars query)
+  (match-define (theory rules _ _) thy)
+  (theory-next
+   (theory rules (render-query vars query)
+           (run
+            (search-top rules vars query)))))
 (define (theory-next thy)
-  (match-define (theory rules sols) thy)
+  (match-define (theory rules q sols) thy)
   (match sols
     [#f (values "No active query" thy)]
-    [(? stream-empty?) (values "No solutions" thy)]
-    [s (values (stream-first s) (theory rules (stream-rest s)))]))
+    [(? stream-empty?)
+     (values (list q '=> #f)
+             thy)]
+    [s
+     (values (list q '=> (stream-first s))
+             (theory rules q (stream-rest s)))]))
+(provide empty-theory)
 
 ;; UI
 (define (teachlog-print v)
@@ -148,14 +151,12 @@
   (match v
     [(? string?) (displayln v)]
     [(? void?) (void)]
-    [(? list?) (pretty-display v)]))
+    [(? list?) (pretty-write v)]))
 
 ;; Syntax
-(define-syntax (theory-ref stx)
-  (raise-syntax-error 'theory-ref "Illegal reference" stx))
 (begin-for-syntax
   (define (illegal-use what stx)
-    (raise-syntax-error what "Illegal outside of teachlog" stx)))
+    (raise-syntax-error what "Illegal outside of :- or ?" stx)))
 
 (begin-for-syntax
   (struct info (name arity)
@@ -166,70 +167,86 @@
 
 (define-syntax (relation stx)
   (syntax-parse stx
-    #:literals (theory-ref)
-    [(_ (theory-ref _) ~! r:id a:nat)
+    [(_ r:id a:nat)
      (syntax/loc stx
-       (define-syntax r (relation-info 'r 'a)))]
-    [(_ r:id a:nat) (illegal-use 'relation stx)]))
+       (define-syntax r (relation-info 'r 'a)))]))
 (provide relation)
 
 (define-syntax (data stx)
   (syntax-parse stx
-    #:literals (theory-ref)
-    [(_ (theory-ref _) ~! d:id a:nat)
+    [(_ d:id a:nat)
      (syntax/loc stx
-       (define-syntax d (data-info 'd 'a)))]
-    [(_ d:id a:nat) (illegal-use 'data stx)]))
+       (define-syntax d (data-info 'd 'a)))]))
 (provide data)
 
 (begin-for-syntax
+  (define empty-free-id-set (immutable-free-id-set))
   (define-syntax-class (static-info which-info? which)
-    #:attributes (x)
+    #:attributes (x vars)
     (pattern (r t:term ...)
              #:declare r (static which-info? which)
-             #:do [(define expected (info-arity (attribute r.value)))
+             #:do [(record-disappeared-uses #'r)
+                   (define expected (info-arity (attribute r.value)))
                    (define actual (length (syntax->list #'(t ...))))]
              #:fail-unless (= actual expected)
              (format "expected ~a arguments, got ~a" expected actual)
              #:attr x
              (quasisyntax/loc this-syntax
-               (list '#,(info-name (attribute r.value)) t.x ...))))
+               (list '#,(info-name (attribute r.value)) t.x ...))
+             #:attr vars
+             (apply free-id-set-union empty-free-id-set (attribute t.vars))))
   (define-syntax-class term
-    #:attributes (x)
-    (pattern x:number)
-    (pattern x:string)
-    (pattern n:id #:attr x #'(lvar 'n 'n))
+    #:attributes (x vars)
+    (pattern x:number
+             #:attr vars empty-free-id-set)
+    (pattern x:string
+             #:attr vars empty-free-id-set)
+    (pattern n:id
+             #:attr x #'n
+             #:attr vars (free-id-set-add empty-free-id-set #'n))
+    (pattern ((~literal unsyntax) e)
+             #:attr x #'e
+             #:attr vars empty-free-id-set)
     (pattern i
              #:declare i (static-info data-info? "data")
-             #:attr x (attribute i.x)))
+             #:attr x (attribute i.x)
+             #:attr vars (attribute i.vars)))
   (define-syntax-class clause
-    #:attributes (x)
+    #:attributes (x vars)
     (pattern i
              #:declare i (static-info relation-info? "relation")
-             #:attr x (attribute i.x))))
+             #:attr x (attribute i.x)
+             #:attr vars (attribute i.vars))))
 
 (define-syntax (:- stx)
-  (syntax-parse stx
-    #:literals (theory-ref)
-    [(_ (theory-ref thy) ~! h:clause b:clause ...)
-     (syntax/loc stx (theory-add thy h.x (list b.x ...)))]
-    [(_ (hr . _) (br . _) ...) (illegal-use ':- stx)]))
+  (with-disappeared-uses
+    (syntax-parse stx
+      [(_ thy h:clause b:clause ...)
+       #:with (v ...)
+       (free-id-set->list
+        (apply free-id-set-union (attribute h.vars)
+               (attribute b.vars)))
+       (syntax/loc stx
+         (theory-add thy
+                     (λ ()
+                       (with-lvars (v ...)
+                         (list h.x b.x ...)))))])))
 (provide :-)
 
 (define-syntax (? stx)
-  (syntax-parse stx
-    #:literals (theory-ref)
-    [(_ (theory-ref thy) ~! h:clause)
-     (syntax/loc stx (theory-query thy h.x))]
-    [(_ q:clause) (illegal-use '? stx)]))
+  (with-disappeared-uses
+    (syntax-parse stx
+      [(_ thy h:clause)
+       #:with (v ...) (free-id-set->list (attribute h.vars))
+       (syntax/loc stx
+         (with-lvars (v ...)
+           (theory-query thy (list v ...) h.x)))])))
 (provide ?)
 
 (define-syntax (next stx)
   (syntax-parse stx
-    #:literals (theory-ref)
-    [(_ (theory-ref thy) ~!)
-     (syntax/loc stx (theory-next thy))]
-    [(_) (illegal-use 'next stx)]))
+    [(_ thy ~!)
+     (syntax/loc stx (theory-next thy))]))
 (provide next)
 
 (begin-for-syntax
@@ -246,35 +263,32 @@
   (define-literal-syntax-class teachlog-bind
     (relation data)))
 (define-syntax (teachlog-do stx)
-  (syntax-parse stx
-    [(_ thy:id)
-     #'thy]
-    [(_ thy:id (b:teachlog-bind . bargs:expr) . es)
-     (syntax/loc stx
-       (let ()
-         (b (theory-ref #f) . bargs)
-         (teachlog-do thy . es)))]
-    [(_ thy:id (f:teachlog-form . fargs:expr) . es)
-     (syntax/loc stx
-       (let-values ([(result next-thy) (f (theory-ref thy) . fargs)])
-         (teachlog-print result)
-         (teachlog-do next-thy . es)))]))
+  (with-disappeared-uses
+    (syntax-parse stx
+      [(_ thy:id (~and e (b:teachlog-bind . _)))
+       (syntax/loc stx e)]
+      [(_ thy:id (~and e (f:teachlog-form . _)))
+       (syntax/loc stx
+         (set! thy (teachlog-interact thy e)))])))
 
-;; XXX test on its own
 (define-syntax (teachlog stx)
   (syntax-parse stx
-    [(_ . es)
+    [(_ (~optional (~seq #:theory thy:expr)) e ...)
      (syntax/loc stx
-       (teachlog-do empty-theory . es))]))
+       (let ([the-thy (~? thy empty-theory)])
+         (teachlog-do the-thy e) ...
+         the-thy))]))
 (provide teachlog)
 
-;; XXX test on own
-;; XXX test with repl
 (define-syntax (teachlog-interact stx)
   (syntax-parse stx
-    [(_ thy e)
+    [(_ thy (~and e (b:teachlog-bind . _)))
+     (syntax/loc stx e)]
+    [(_ thy (f:teachlog-form . fargs:expr))
      (syntax/loc stx
-       (teachlog-do thy e))]))
+       (let-values ([(result next-thy) (f thy . fargs)])
+         (teachlog-print result)
+         next-thy))]))
 (provide teachlog-interact)
 
 ;; Language

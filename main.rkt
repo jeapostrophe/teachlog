@@ -224,7 +224,6 @@
 
 (define-syntax (teachlog-interact stx)
   (syntax-parse stx
-    [(_ thy (~and e (b:teachlog-bind . _))) #'e]
     [(_ thy (f:teachlog-form . fargs:expr))
      (syntax/loc stx
        (let-values ([(result next-thy) (f thy . fargs)])

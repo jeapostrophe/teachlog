@@ -1,4 +1,5 @@
 #lang info
 (define collection "teachlog")
-(define deps '("base"))
+(define deps '("brag"
+               "base"))
 (define build-deps '())

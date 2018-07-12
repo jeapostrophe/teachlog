@@ -17,8 +17,8 @@
        ["'" (token 'QUOTE 'quote)]
        ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
        ["/" (token 'SLASH)] ["." (token 'DOT)] ["," (token 'COMMA)]
-       [whitespace (ugly-lexer ip)]
-       [(from/to "%" "\n") (ugly-lexer ip)]
+       [whitespace (token 'WS #:skip? #t)]
+       [(from/to "%" "\n") (token 'COMMENT #:skip? #t)]
        [(from/to "\"" "\"") (token 'STRING (trim-ends "\"" lexeme "\""))]
        [(:+ alphabetic) (token 'ID (string->symbol lexeme))]
        [(eof) (void)]))

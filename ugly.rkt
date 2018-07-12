@@ -1,11 +1,16 @@
 #lang racket/base
+(require (for-syntax racket/base
+                     syntax/parse)
+         syntax/parse/define
+         (prefix-in tl: (submod teachlog lang)))
 
 (module reader syntax/module-reader
   teachlog/ugly
   #:read my-read
   #:read-syntax my-read-syntax
   #:whole-body-readers? #t
-  (require teachlog/grammar
+  (require racket/list
+           teachlog/grammar
            brag/support)
 
   (define (tokenize ip)
@@ -14,17 +19,14 @@
       (lexer-src-pos
        [(repetition 1 +inf.0 numeric)
         (token 'NUMBER (string->number lexeme))]
-       ["rel" (token 'REL)]
-       ["data" (token 'DATA)]
-       ["next" (token 'NEXT)]
-       ["(" (token 'LPAREN)]
-       [")" (token 'RPAREN)]
-       ["/" (token 'SLASH)]
-       ["." (token 'DOT)]
-       ["," (token 'COMMA)]
-       ["'" (token 'QUOTE)]
-       [":-" (token 'IMPLIED-BY)]
-       ["?" (token 'QMARK)]
+       ["rel" (token 'REL 'relation)]
+       ["data" (token 'DATA 'data)]
+       ["next" (token 'NEXT 'next)]
+       [":-" (token 'IMPLIED-BY ':-)]
+       ["?" (token 'QMARK '?)]
+       ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
+       ["/" (token 'SLASH)] ["." (token 'DOT)]
+       ["," (token 'COMMA)] ["'" (token 'QUOTE)]
        [whitespace (my-lexer ip)]
        [(:: "%" (complement (:: any-string "\n" any-string)) "\n") (my-lexer ip)]
        [(:: "\"" (complement (:: any-string "\"" any-string)) "\"")
@@ -38,11 +40,7 @@
     (syntax->datum (my-read-syntax #f in)))
 
   (define (my-read-syntax src ip)
-    (list (parse src (tokenize ip)))))
-
-(require (for-syntax racket/base
-                     syntax/parse)
-         (prefix-in tl: (submod teachlog lang)))
+    (rest (syntax-e (parse src (tokenize ip))))))
 
 (begin-for-syntax
   (define-syntax-class term
@@ -58,25 +56,25 @@
              #:attr x #'(r t.x ...)))
   (define-syntax-class stmt
     #:attributes (x)
-    (pattern ((~datum rel) r:id n:nat)
-             #:attr x #'(tl:relation r n))
-    (pattern ((~datum data) d:id n:nat)
-             #:attr x #'(tl:data d n))
-    (pattern ((~datum data) d:id)
-             #:attr x #'(tl:data d))
+    (pattern ((~datum rel) the-rel r:id n:nat)
+             #:attr x #'(the-rel r n))
+    (pattern ((~datum data) the-data d:id n:nat)
+             #:attr x #'(the-data d n))
+    (pattern ((~datum data) the-data d:id)
+             #:attr x #'(the-data d))
     (pattern ((~datum fact) c:clause)
              #:attr x #'(tl::- c.x))
-    (pattern ((~datum rule) h:clause b:clause ...)
-             #:attr x #'(tl::- h.x b.x ...))
-    (pattern ((~datum query) c:clause)
-             #:attr x #'(tl:? c.x))
-    (pattern ((~datum next))
-             #:attr x #'(tl:next))))
+    (pattern ((~datum rule) h:clause the-bar b:clause ...)
+             #:attr x #'(the-bar h.x b.x ...))
+    (pattern ((~datum query) c:clause the-q)
+             #:attr x #'(the-q c.x))
+    (pattern ((~datum next) the-next)
+             #:attr x #'(the-next))))
 
-(define-syntax (umbegin stx)
-  (syntax-parse stx
-    [(_ ((~datum program) e:stmt ...))
-     #'(tl:#%module-begin e.x ...)]))
+(define-simple-macro (umbegin e:stmt ...)
+  (tl:#%module-begin e.x ...))
 
-(provide (rename-out [umbegin #%module-begin])
+(provide (rename-out [umbegin #%module-begin]
+                     [tl:relation relation] [tl:data data]
+                     [tl:? ?] [tl::- :-] [tl:next next])
          #%datum)

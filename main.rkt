@@ -14,10 +14,9 @@
 (struct fail nd ())
 (struct choice nd (mx my))
 
+(struct st (p k))
 (struct kont:return ())
 (struct kont:bind (f k))
-
-(struct st (p k))
 
 (define (sols q)
   (match q
@@ -96,8 +95,7 @@
           (theory (cons new-rule rules) #f)))
 (define (theory-query thy query)
   (match-define (theory rules _) thy)
-  (theory-next
-   (theory rules (search-top rules query))))
+  (theory-next (theory rules (search-top rules query))))
 (define (theory-next thy)
   (match-define (theory rules sols) thy)
   (match sols
@@ -223,7 +221,6 @@
     (#%module-begin (tl-top . e) ...)))
 
 ;; Examples
-
 (module+ test
   (require (submod ".." interop test)))
 

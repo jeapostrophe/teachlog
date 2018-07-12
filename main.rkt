@@ -85,8 +85,7 @@
              (search1 all-rules env ruleN q))]))
 
 (define (searchN all-rules env qs)
-  (for/fold ([p (ans env)])
-            ([q (in-list qs)])
+  (for/fold ([p (ans env)]) ([q (in-list qs)])
     (bind p (λ (new-env) (search* all-rules new-env all-rules q)))))
 
 (define (search-top all-rules q)
@@ -182,13 +181,10 @@
 (provide relation data :- ? next)
 
 ;; Language and interface helpers
-(define-simple-macro
-  (define-literal-syntax-class the-class:id (the-literal:id ...))
-  (begin-for-syntax
-    (define-syntax-class the-class (pattern (~literal the-literal)) ...)))
-
-(define-literal-syntax-class teachlog-form (:- ? next))
-(define-literal-syntax-class teachlog-bind (relation data))
+(begin-for-syntax
+  (define-syntax-class teachlog-bind
+    (pattern (~literal relation))
+    (pattern (~literal data))))
 
 (define (teachlog-print v)
   (local-require racket/pretty)
@@ -198,9 +194,9 @@
     [_ (pretty-write v)]))
 
 (define (teachlog-do!* thy-box tl-stmt)
-  (let-values ([(result next-thy) (tl-stmt)])
-    (teachlog-print result)
-    (set-box! thy-box next-thy)))
+  (define-values (result next-thy) (tl-stmt))
+  (teachlog-print result)
+  (set-box! thy-box next-thy))
 (define-syntax-parser teachlog-do!
   [(_ thy:id (~and e (b:teachlog-bind . _)))
    #'e]

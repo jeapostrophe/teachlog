@@ -204,7 +204,7 @@
 (define-syntax-parser teachlog-do!
   [(_ thy:id (~and e (b:teachlog-bind . _)))
    #'e]
-  [(_ thy:id (~and e (f:teachlog-form . fargs:expr)))
+  [(_ thy:id (~and e (f . fargs:expr)))
    #'(teachlog-do!* thy (λ () (f (unbox thy) . fargs)))])
 
 ;; Main interface

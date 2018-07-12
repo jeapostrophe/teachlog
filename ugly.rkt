@@ -42,45 +42,19 @@
   #:whole-body-readers? #t
   (require (submod ".." parser)))
 
-(require (for-syntax racket/base
-                     syntax/parse)
-         syntax/parse/define
+(require syntax/parse/define
          (prefix-in tl: (submod teachlog lang)))
 
-(begin-for-syntax
-  (define-syntax-class term
-    #:attributes (x)
-    (pattern ((~datum term) (~or x:number x:string x:id)))
-    (pattern ((~datum term) (~and (~datum quote) the-quote) e:id)
-             #:attr x #'(the-quote e))
-    (pattern ((~datum term) d:id t:term ...)
-             #:attr x #'(d t.x ...)))
-  (define-syntax-class clause
-    #:attributes (x)
-    (pattern ((~datum clause) r:id t:term ...)
-             #:attr x #'(r t.x ...)))
-  (define-syntax-class stmt
-    #:attributes (x)
-    (pattern ((~datum rel) the-rel r:id n:nat)
-             #:attr x #'(the-rel r n))
-    (pattern ((~datum data) the-data d:id n:nat)
-             #:attr x #'(the-data d n))
-    (pattern ((~datum data) the-data d:id)
-             #:attr x #'(the-data d))
-    (pattern ((~datum fact) c:clause)
-             #:attr x #'(tl::- c.x))
-    (pattern ((~datum rule) h:clause the-bar b:clause ...)
-             #:attr x #'(the-bar h.x b.x ...))
-    (pattern ((~datum query) c:clause the-q)
-             #:attr x #'(the-q c.x))
-    (pattern ((~datum next) the-next)
-             #:attr x #'(the-next))))
+(define-simple-macro (fact thy c)
+  (tl::- thy c))
+(define-simple-macro (rule thy h the-bar b ...)
+  (the-bar thy h b ...))
+(define-simple-macro (query thy c the-q)
+  (the-q thy c))
 
-(define-simple-macro (umbegin e:stmt ...)
-  (tl:#%module-begin e.x ...))
-
-(provide (rename-out [umbegin #%module-begin]
+(provide (rename-out [tl:#%module-begin #%module-begin]
                      [tl:#%top-interaction #%top-interaction]
                      [tl:relation relation] [tl:data data]
                      [tl:? ?] [tl::- :-] [tl:next next])
-         #%datum quote)
+         #%datum quote
+         fact rule query)

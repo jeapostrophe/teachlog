@@ -5,23 +5,24 @@
            brag/support)
   (provide ugly-read ugly-read-syntax)
 
+  (define ugly-lexer
+    (lexer-srcloc
+     [(repetition 1 +inf.0 numeric) (token 'NUMBER (string->number lexeme))]
+     ["rel" (token 'REL 'relation)]
+     ["data" (token 'DATA 'data)]
+     ["next" (token 'NEXT 'next)]
+     [":-" (token 'IMPLIED-BY ':-)]
+     ["?" (token 'QMARK '?)]
+     ["'" (token 'QUOTE 'quote)]
+     ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
+     ["/" (token 'SLASH)] ["." (token 'DOT)] ["," (token 'COMMA)]
+     [whitespace (token 'WS #:skip? #t)]
+     [(from/to "%" "\n") (token 'COMMENT #:skip? #t)]
+     [(from/to "\"" "\"") (token 'STRING (trim-ends "\"" lexeme "\""))]
+     [(:+ alphabetic) (token 'ID (string->symbol lexeme))]
+     [(eof) (void)]))
+
   (define (tokenize ip)
-    (define ugly-lexer
-      (lexer-src-pos
-       [(repetition 1 +inf.0 numeric) (token 'NUMBER (string->number lexeme))]
-       ["rel" (token 'REL 'relation)]
-       ["data" (token 'DATA 'data)]
-       ["next" (token 'NEXT 'next)]
-       [":-" (token 'IMPLIED-BY ':-)]
-       ["?" (token 'QMARK '?)]
-       ["'" (token 'QUOTE 'quote)]
-       ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
-       ["/" (token 'SLASH)] ["." (token 'DOT)] ["," (token 'COMMA)]
-       [whitespace (token 'WS #:skip? #t)]
-       [(from/to "%" "\n") (token 'COMMENT #:skip? #t)]
-       [(from/to "\"" "\"") (token 'STRING (trim-ends "\"" lexeme "\""))]
-       [(:+ alphabetic) (token 'ID (string->symbol lexeme))]
-       [(eof) (void)]))
     (port-count-lines! ip)
     (λ () (ugly-lexer ip)))
 

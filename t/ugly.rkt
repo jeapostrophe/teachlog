@@ -19,10 +19,7 @@ ancestor(X, Z) :-
 
 % Queries
 ancestor(X, "drogon")?
-next.
-next.
-next.
-next.
+next. next. next. next.
 
 % Test cases
 data zero.

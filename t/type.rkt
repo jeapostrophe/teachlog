@@ -57,16 +57,10 @@
 
 (? (has-type mt true T))
 (? (has-type mt (if true one zero) T))
-(? (has-type mt (if true one false) T))
 
 (? (has-type mt T Num))
 
-(? (has-type (extend "w" Bool (extend "v" Num mt))
-             (var "v")
-             T))
-
 (? (has-type mt (fun 'x (if (var 'x) zero true)) T))
-
 (? (has-type mt (fun "x" (if (var "x") one zero)) T))
 
 (? (has-type mt
@@ -91,5 +85,3 @@
                          (app (var "id") zero)))
                   (fun "x" (var "x")))
              T))
-
-(? (has-type mt (fun "x" (app (var "x") (var "x"))) Num))

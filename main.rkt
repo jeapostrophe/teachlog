@@ -47,35 +47,29 @@
   (match v
     [(list) (list)]
     [(cons a d) (cons (rec a) (rec d))]
-    [(lvar dx x) (rec (hash-ref env v x))]
+    [(lvar _ x) (rec (hash-ref env v x))]
     [_ v]))
 
 ;; Unification
 (define (unify env lhs rhs)
-  (cond
-    [(equal? lhs rhs)
-     (ans env)]
-    [(lvar? lhs)
-     (cond
-       [(hash-ref env lhs #f)
-        => (λ (lhs-v) (unify env lhs-v rhs))]
-       [else
-        (ans (hash-set env lhs rhs))])]
-    [(lvar? rhs)
+  (match* (lhs rhs)
+    [(x x) (ans env)]
+    [((? lvar?) _)
+     (match (hash-ref env lhs #f)
+       [#f (ans (hash-set env lhs rhs))]
+       [lhs-v (unify env lhs-v rhs)])]
+    [(_ (? lvar?))
      (unify env rhs lhs)]
-    [(and (pair? lhs) (pair? rhs))
-     (bind (unify env (car lhs) (car rhs))
-           (λ (new-env)
-             (unify new-env (cdr lhs) (cdr rhs))))]
-    [else
-     (fail)]))
+    [((cons la ld) (cons ra rd))
+     (bind (unify env la ra)
+           (λ (new-env) (unify new-env ld rd)))]
+    [(_ _) (fail)]))
 
 ;; Logic Engine
 (define (search1 all-rules env rule1 q)
   (match-define (cons head body) (rule1))
   (bind (unify env head q)
-        (λ (new-env)
-          (searchN all-rules new-env body))))
+        (λ (new-env) (searchN all-rules new-env body))))
 
 (define (search* all-rules env rules q)
   (match rules
@@ -90,8 +84,7 @@
 
 (define (search-top all-rules q)
   (run (bind (searchN all-rules (hasheq) (list q))
-             (λ (env)
-               (ans (env-deref env q))))))
+             (λ (env) (ans (env-deref env q))))))
 
 ;; Runtime
 (struct theory (rules sols))
@@ -164,9 +157,9 @@
 (define-info-syntax data data-info)
 
 (define-simple-macro (:- thy h:clause b:clause ...)
-  #:with (v ...) (free-id-set->list
-                  (free-id-set-union* (cons (attribute h.vars)
-                                            (attribute b.vars))))
+  #:with (v ...)
+  (free-id-set->list
+   (free-id-set-union* (cons (attribute h.vars) (attribute b.vars))))
   (theory-add thy
               (λ ()
                 (with-lvars (v ...)
@@ -241,7 +234,7 @@
   (relation parent 2)
   (relation ancestor 2)
 
-  (define ft
+  (define targ
     (teachlog
      (:- (parent "maekar" "aegon-5"))
      (:- (parent "aegon-5" "aerys-2"))
@@ -255,6 +248,6 @@
          (ancestor Y Z))))
 
   (module+ test
-    (teachlog #:theory ft
+    (teachlog #:theory targ
               (? (ancestor X "drogon"))
               (next) (next) (next) (next))))

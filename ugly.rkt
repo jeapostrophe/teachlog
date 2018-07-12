@@ -9,8 +9,7 @@
   (define (tokenize ip)
     (define ugly-lexer
       (lexer-src-pos
-       [(repetition 1 +inf.0 numeric)
-        (token 'NUMBER (string->number lexeme))]
+       [(repetition 1 +inf.0 numeric) (token 'NUMBER (string->number lexeme))]
        ["rel" (token 'REL 'relation)]
        ["data" (token 'DATA 'data)]
        ["next" (token 'NEXT 'next)]
@@ -20,9 +19,8 @@
        ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
        ["/" (token 'SLASH)] ["." (token 'DOT)] ["," (token 'COMMA)]
        [whitespace (ugly-lexer ip)]
-       [(:: "%" (complement (:: any-string "\n" any-string)) "\n") (ugly-lexer ip)]
-       [(:: "\"" (complement (:: any-string "\"" any-string)) "\"")
-        (token 'STRING (substring lexeme 1 (sub1 (string-length lexeme))))]
+       [(from/to "%" "\n") (ugly-lexer ip)]
+       [(from/to "\"" "\"") (token 'STRING (trim-ends "\"" lexeme "\""))]
        [(:+ alphabetic) (token 'ID (string->symbol lexeme))]
        [(eof) (void)]))
     (port-count-lines! ip)

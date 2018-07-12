@@ -1,21 +1,13 @@
 #lang racket/base
-(require (for-syntax racket/base
-                     syntax/parse)
-         syntax/parse/define
-         (prefix-in tl: (submod teachlog lang)))
 
-(module reader syntax/module-reader
-  teachlog/ugly
-  #:read my-read
-  #:read-syntax my-read-syntax
-  #:whole-body-readers? #t
-  (require racket/list
+(module parser racket/base
+  (require syntax/parse
            teachlog/grammar
            brag/support)
+  (provide ugly-read ugly-read-syntax)
 
   (define (tokenize ip)
-    (port-count-lines! ip)
-    (define my-lexer
+    (define ugly-lexer
       (lexer-src-pos
        [(repetition 1 +inf.0 numeric)
         (token 'NUMBER (string->number lexeme))]
@@ -24,30 +16,43 @@
        ["next" (token 'NEXT 'next)]
        [":-" (token 'IMPLIED-BY ':-)]
        ["?" (token 'QMARK '?)]
+       ["'" (token 'QUOTE 'quote)]
        ["(" (token 'LPAREN)] [")" (token 'RPAREN)]
-       ["/" (token 'SLASH)] ["." (token 'DOT)]
-       ["," (token 'COMMA)] ["'" (token 'QUOTE)]
-       [whitespace (my-lexer ip)]
-       [(:: "%" (complement (:: any-string "\n" any-string)) "\n") (my-lexer ip)]
+       ["/" (token 'SLASH)] ["." (token 'DOT)] ["," (token 'COMMA)]
+       [whitespace (ugly-lexer ip)]
+       [(:: "%" (complement (:: any-string "\n" any-string)) "\n") (ugly-lexer ip)]
        [(:: "\"" (complement (:: any-string "\"" any-string)) "\"")
         (token 'STRING (substring lexeme 1 (sub1 (string-length lexeme))))]
        [(:+ alphabetic) (token 'ID (string->symbol lexeme))]
        [(eof) (void)]))
-    (define (next-token) (my-lexer ip))
-    next-token)
+    (port-count-lines! ip)
+    (λ () (ugly-lexer ip)))
 
-  (define (my-read in)
-    (syntax->datum (my-read-syntax #f in)))
+  (define (ugly-read in)
+    (syntax->datum (ugly-read-syntax #f in)))
 
-  (define (my-read-syntax src ip)
-    (rest (syntax-e (parse src (tokenize ip))))))
+  (define (ugly-read-syntax src ip)
+    (syntax-parse (parse src (tokenize ip))
+      [((~literal program) . contents) #'contents])))
+
+(module* reader syntax/module-reader
+  teachlog/ugly
+  #:read ugly-read
+  #:read-syntax ugly-read-syntax
+  #:whole-body-readers? #t
+  (require (submod ".." parser)))
+
+(require (for-syntax racket/base
+                     syntax/parse)
+         syntax/parse/define
+         (prefix-in tl: (submod teachlog lang)))
 
 (begin-for-syntax
   (define-syntax-class term
     #:attributes (x)
     (pattern ((~datum term) (~or x:number x:string x:id)))
-    (pattern ((~datum term) #f e:id)
-             #:attr x #''e)
+    (pattern ((~datum term) (~and (~datum quote) the-quote) e:id)
+             #:attr x #'(the-quote e))
     (pattern ((~datum term) d:id t:term ...)
              #:attr x #'(d t.x ...)))
   (define-syntax-class clause
@@ -75,6 +80,7 @@
   (tl:#%module-begin e.x ...))
 
 (provide (rename-out [umbegin #%module-begin]
+                     [tl:#%top-interaction #%top-interaction]
                      [tl:relation relation] [tl:data data]
                      [tl:? ?] [tl::- :-] [tl:next next])
-         #%datum)
+         #%datum quote)

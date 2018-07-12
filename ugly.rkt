@@ -1,8 +1,7 @@
 #lang racket/base
 
 (module parser racket/base
-  (require syntax/parse
-           teachlog/grammar
+  (require teachlog/grammar
            brag/support)
   (provide ugly-read ugly-read-syntax)
 
@@ -26,12 +25,11 @@
     (port-count-lines! ip)
     (λ () (ugly-lexer ip)))
 
-  (define (ugly-read in)
-    (syntax->datum (ugly-read-syntax #f in)))
+  (define (ugly-read ip)
+    (syntax->datum (ugly-read-syntax #f ip)))
 
   (define (ugly-read-syntax src ip)
-    (syntax-parse (parse src (tokenize ip))
-      [((~literal program) . contents) #'contents])))
+    (parse src (tokenize ip))))
 
 (module* reader syntax/module-reader
   teachlog/ugly

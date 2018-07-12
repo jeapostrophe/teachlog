@@ -1,5 +1,5 @@
 #lang brag
-program : stmt *
+/program : stmt *
 
 @stmt : rel | data | fact | rule | query | next
 

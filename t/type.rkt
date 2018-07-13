@@ -2,7 +2,7 @@
 
 (relation has-type 3)
 
-;; Environments
+;; Γ
 (data mt)
 (data extend 3)
 
